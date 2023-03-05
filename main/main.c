@@ -22,77 +22,72 @@ extern const uint8_t ulp_main_bin_start[] asm("_binary_ulp_main_bin_start");
 extern const uint8_t ulp_main_bin_end[]   asm("_binary_ulp_main_bin_end");
 
 void rtc_initialization ( void );
+void start_connection ( uint8_t temperature, uint8_t humidity );
+
+RTC_DATA_ATTR uint8_t quantity_table[2][2] = {0};
+RTC_DATA_ATTR uint8_t current_row = 0;
 
 void app_main(void) {
-  esp_err_t error_status;
+    esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
+    if ( cause != ESP_SLEEP_WAKEUP_ULP ) {
+	      ulp_load_binary(0, ulp_main_bin_start, (ulp_main_bin_end - ulp_main_bin_start) / sizeof(uint32_t));
+	  } else {
+        uint8_t temperature = (ulp_temp_conv & UINT16_MAX) - 40;
+        uint8_t humidity = (ulp_hum_conv & UINT16_MAX);
 
-  esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
-  if ( cause != ESP_SLEEP_WAKEUP_ULP ) {
-	ulp_load_binary(0, ulp_main_bin_start, (ulp_main_bin_end - ulp_main_bin_start) / sizeof(uint32_t));
-	} else {
-    uint8_t temperature = (ulp_temp_conv & UINT16_MAX) - 40;
-    uint8_t humidity = (ulp_hum_conv & UINT16_MAX);
+        if ( quantity_table[0][current_row] != temperature) {
+            quantity_table[0][current_row] = temperature;
+            start_connection ( temperature, humidity );
+        }
+        if (quantity_table[1][current_row] != humidity) {
+            quantity_table[1][current_row] = humidity;
+            start_connection ( temperature, humidity );
+        }
+        current_row = (current_row + 1) % 2;
 
-    configure_nvs();
-	  configure_wifi();
+        printf("quantity_table[temp][%d]: %d\n", current_row, temperature);
+        printf("quantity_table[hemp][%d]: %d\n", current_row, humidity);
+        printf("converted_value: %d\n", ulp_converted_value & UINT16_MAX);
+        printf("numerator: %d\n", ulp_numerator & UINT16_MAX);
+
+        printf("Temp: %d, ", temperature);
+        printf("Hum: %d\n", humidity);
+    }
+
+    rtc_initialization();
+
+    ulp_run(&ulp_entry - RTC_SLOW_MEM);
+
+    esp_sleep_enable_ulp_wakeup();
+    esp_deep_sleep_start();
+}
+
+void rtc_initialization ( void ) {
+    rtc_gpio_init(GPIO_NUM_25);
+	  rtc_gpio_pullup_en(GPIO_NUM_25);
+	  rtc_gpio_set_direction(GPIO_NUM_25, RTC_GPIO_MODE_INPUT_OUTPUT_OD);
+
+    rtc_gpio_init(GPIO_NUM_26);
+	  rtc_gpio_pullup_en(GPIO_NUM_26);
+	  rtc_gpio_set_direction(GPIO_NUM_26, RTC_GPIO_MODE_INPUT_OUTPUT_OD);
+}
+
+void start_connection ( uint8_t temperature, uint8_t humidity ) {
+    esp_err_t error_status;
+
+    configure_nvs ();
+    configure_wifi();
 	  //configure_wifi_button();
 
-	  start_wifi(WIFI_MODE_STA);
+    start_wifi(WIFI_MODE_STA);
 	  error_status = esp_wifi_start();
 	  printf("start_wifi app_main(): %s\n", esp_err_to_name(error_status));
 
     vTaskDelay(5000 / portTICK_PERIOD_MS);
+
     if ( !error_status ) {
-      start_http_client(temperature, humidity);
-      if ( ulp_current_measurement & UINT16_MAX ) {
-        printf("Ostatni pomiar: Wilgotność\n");
-      } else {
-        printf("Ostatni pomiar: Temperatura\n");
-      }
-      printf("Temp: %d, ", temperature);
-      printf("Hum: %d\n", humidity);
+        start_http_client(temperature, humidity);
     }
-    printf("humidity_buffer[0]: %d\n", (uint16_t)(&ulp_humidity_buffer)[0]);
-    printf("humidity_buffer[1]: %d\n", (uint16_t)(&ulp_humidity_buffer)[1]);
-    printf("humidity_buffer[2]: %d\n", (uint16_t)(&ulp_humidity_buffer)[2]);
-    printf("humidity_buffer[3]: %d\n", (uint16_t)(&ulp_humidity_buffer)[3]);
-    printf("humidity_buffer[4]: %d\n", (uint16_t)(&ulp_humidity_buffer)[4]);
-    printf("humidity_buffer[5]: %d\n", (uint16_t)(&ulp_humidity_buffer)[5]);
-    printf("humidity_buffer[6]: %d\n", (uint16_t)(&ulp_humidity_buffer)[6]);
-    printf("humidity_buffer[7]: %d\n", (uint16_t)(&ulp_humidity_buffer)[7]);
-    printf("humidity_buffer[8]: %d\n", (uint16_t)(&ulp_humidity_buffer)[8]);
-    printf("humidity_buffer[9]: %d\n", (uint16_t)(&ulp_humidity_buffer)[9]);
-
-    printf("temperature_buffer[0]: %d\n", (uint16_t)(&ulp_temperature_buffer)[0]);
-    printf("temperature_buffer[1]: %d\n", (uint16_t)(&ulp_temperature_buffer)[1]);
-    printf("temperature_buffer[2]: %d\n", (uint16_t)(&ulp_temperature_buffer)[2]);
-    printf("temperature_buffer[3]: %d\n", (uint16_t)(&ulp_temperature_buffer)[3]);
-    printf("temperature_buffer[4]: %d\n", (uint16_t)(&ulp_temperature_buffer)[4]);
-    printf("temperature_buffer[5]: %d\n", (uint16_t)(&ulp_temperature_buffer)[5]);
-    printf("temperature_buffer[6]: %d\n", (uint16_t)(&ulp_temperature_buffer)[6]);
-    printf("temperature_buffer[7]: %d\n", (uint16_t)(&ulp_temperature_buffer)[7]);
-    printf("temperature_buffer[8]: %d\n", (uint16_t)(&ulp_temperature_buffer)[8]);
-    printf("temperature_buffer[9]: %d\n", (uint16_t)(&ulp_temperature_buffer)[9]);
-
     esp_wifi_disconnect();
     esp_wifi_stop();
-  }
-
-  rtc_initialization();
-
-  ulp_run(&ulp_entry - RTC_SLOW_MEM);
-
-  esp_sleep_enable_ulp_wakeup();
-  esp_deep_sleep_start();
-}
-
-
-void rtc_initialization ( void ) {
-  rtc_gpio_init(GPIO_NUM_25);
-	rtc_gpio_pullup_en(GPIO_NUM_25);
-	rtc_gpio_set_direction(GPIO_NUM_25, RTC_GPIO_MODE_INPUT_OUTPUT_OD);
-
-  rtc_gpio_init(GPIO_NUM_26);
-	rtc_gpio_pullup_en(GPIO_NUM_26);
-	rtc_gpio_set_direction(GPIO_NUM_26, RTC_GPIO_MODE_INPUT_OUTPUT_OD);
 }

@@ -8,8 +8,6 @@
 // ------ SECTION BSS  ------
 .section            .bss
 
-  .global   new_crc
-new_crc:            .long 0
   .global   counter
 counter:            .long 0
 
@@ -51,8 +49,9 @@ current_measurement:.long 0   // A lsb variable indicates the last measurement.
 temp_conv:          .long 0   // Converted temperature value from the sensor numbers
   .global   hum_conv
 hum_conv:           .long 0   // Converted humidity value from the sensor numbers
-
+  .global   numerator
 numerator:          .long 0   // if array of measured values is full this variable store the rest of the dividing
+  .global   converted_value
 converted_value:    .long 0   // msb + lsb
 buffer:             .long 0
 
@@ -63,9 +62,7 @@ buffer:             .long 0
     .set    ADDRESS_W_COM,  0x80
     .set    ADDRESS_R_COM,  0x81
     .set    TEMP_HOLD_COM,  0xe3
-    .set    TEMP_NOHOLD_COM,0xf3
     .set    HUM_HOLD_COM,   0xe5
-    .set    HUM_NOHOLD_COM, 0xf5
     .set    READ_REG_COM,   0xe7
     .set    WRITE_REG_COM,  0xe6
     .set    SOFT_RESET_COM, 0xfe
@@ -168,6 +165,15 @@ end_main_loop:
 
 
 wake_up:
+    /*INFO: There will be no wakeup if counter is lower than 20.*/
+    move    r3, counter
+    ld      r0, r3, 0
+    jumpr   run_program, 1, ge
+    add     r0, r0, 1
+    st      r0, r3, 0
+    jump    entry
+run_program:
+
     wake
     WRITE_RTC_FIELD(RTC_CNTL_STATE0_REG, RTC_CNTL_ULP_CP_SLP_TIMER_EN, 0)
     halt
@@ -178,11 +184,11 @@ wake_up:
 delay:
   //move    r0, 0x00
 // rep_del:
-    // stage_rst
+    stage_rst
 del_loop:
-    wait    8330
-    // stage_inc 1
-    // jumps   del_loop, 6, lt //123
+    wait    40000
+    stage_inc 1
+    jumps   del_loop, 2, lt //123
     // add     r0, r0, 1
     // jumpr   rep_del, 3, lt //12
     ret
@@ -320,6 +326,7 @@ hum_measurement:
   add     r0, r0, 1
   st      r0, r2, 0
   jumpr   end_add, 10, lt
+  move    r1, humidity_buffer
   jump    after_load
 temp_measurement:
   move    r0, temperature_pointer     // store the converted value in a temperature_buffer array
@@ -331,14 +338,19 @@ temp_measurement:
   add     r0, r0, 1
   st      r0, r2, 0
   jumpr   end_add, 10, lt
+  move    r1, temperature_buffer
 after_load:
-  move    r0, 0x00
+  sub     r0, r0, 1
   st      r0, r2, 0
+  ld      r2, r1, 0
   stage_rst
 count_rep_3:                          // INFO: do the addition on the variables in the array
-  ld      r2, r1, 0
   add     r0, r0, r2
+  add     r1, r1, 1
+  ld      r2, r1, 0
   sub     r1, r1, 1
+  st      r2, r1, 1
+  add     r1, r1, 1
   stage_inc 1
   jumps   count_rep_3, 10, lt
   move    r1, 0x00
@@ -366,118 +378,28 @@ check_values:
   jumpr   end_check_values, 0, eq
   and     r1, r1, 0xef
   st      r1, r2, 0
-  and     r0, r1, 0x01
-  move    r2, converted_value
-  ld      r2, r2, 0
-  jumpr   hum_was_measured, 0, eq
-temp_was_measured:
-  move    r1, temp_conv
-  jump    next_step_check
-hum_was_measured:
-  move    r1, hum_conv
-next_step_check:
+  move    r1, converted_value
   ld      r1, r1, 0
-  sub     r1, r1, r2
-  and     r0, r1, 0x1000
-  jumpr   if_minus, 0, gt
-if_plus:
-  jumpr   jump_to_wakeup, 2, ge
   move    r0, numerator
   ld      r0, r0, 0
-  jumpr   jump_to_wakeup, 7, ge
-  jump    end_check_values
-if_minus:
-  move    r2, 0xffff
-  and     r0, r1, r2
-  add     r1, r1, r2
-  sub     r1, r1, r0
-  sub     r1, r1, r0
-  add     r0, r1, 1
-  jumpr   jump_to_wakeup, 2, ge
-  move    r0, numerator
-  ld      r0, r0, 0
-  jumpr   jump_to_wakeup, 3, le
-  jump    end_check_values
-jump_to_wakeup:
-  move    r0, current_measurement
-  ld      r0, r0, 0
+  jumpr   step_1, 7, gt
+  jump    step_2
+step_1:
+  add     r1, r1, 1
+ step_2:
+  ld      r0, r2, 0
   and     r0, r0, 0x01
-  jumpr   hum_take, 0, eq
-  move    r1, temp_conv
-  jump    jump_to_wakeup_2
-hum_take:
-  move    r1, hum_conv
-jump_to_wakeup_2:
-  move    r2, converted_value
-  ld      r2, r2, 0
-  st      r2, r1, 0
+  jumpr   if_hum, 0, eq
+  move    r2, temp_conv
+  jump    step_3
+if_hum:
+  move    r2, hum_conv
+step_3:
+  ld      r0, r2, 0
+  sub     r0, r1, r0
+  jumpr   end_check_values, 0, eq
+  st      r1, r2, 0
   jump    wake_up
+
 end_check_values:
   ret
-
-
-
-
-
-/*WARNING:
-check_crc:
-  stage_rst
-  move    r1, counter       // set imortant variables before counting
-  move    r2, 0x0080        // reset counter (0x80)
-  st      r2, r1, 0
-  move    r1, buffer
-  move    r2, lsb_bits
-  ld      r2, r2, 0
-  st      r2, r1, 0
-  move    r1, msb_bits      // load msb_bits variable into r1 register
-  ld      r1, r1, 0
-
-rep_check:
-  lsh     r1, r1, 1
-
-  move    r2, buffer       // load lsb_bits into r2 to copy next bit
-  ld      r2, r2, 0
-
-  move    r0, counter      // load counter...
-  ld      r0, r0, 0
-  and     r0, r2, r0       // ... and check value indicated by counter
-  jumpr   if_zero, 0, eq
-  or      r1, r1, 0x0001   // 0x00000001 set lsb into msb_bits to 1
-  jump    after_zero
-if_zero:
-  and     r1, r1, 0xFFFE   // 0x11111110 set lsb into msb_bits to 0
-after_zero:
-  and     r0, r1, 0x0100   // check 9 bit and store a value into r0
-  and     r1, r1, 0x00ff   // change 9 bit to 0
-  jumpr   to_counter, 0, eq
-xor:
-  move    r2, 0x0031       // r2 = 00110001
-
-  and     r0, r1, r2
-  add     r1, r1, r2
-  sub     r1, r1, r0
-  sub     r1, r1, r0
-to_counter:
-  move    r2, counter
-  ld      r0, r2, 0
-  jumps   if_no_status, 2, gt
-
-  move    r0, 0x0800
-  st      r0, r2, 0
-  move    r2, buffer
-  move    r0, 0x0000
-  st      r0, r2, 0
-
-  jump    last_step_crc
-if_no_status:
-  rsh     r0, r0, 1
-  st      r0, r2, 0
-last_step_crc:
-  stage_inc 1
-  jumps   rep_check, 16, lt
-
-  move    r2, new_crc
-  st      r1, r2, 0
-
-  ret
-*/
