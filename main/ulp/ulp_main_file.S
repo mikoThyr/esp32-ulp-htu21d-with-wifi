@@ -15,9 +15,8 @@ counter:            .long 0
 values_buffer:      .long 0
                     .long 0
                     .long 0
-
+  .global   temperature_pointer
 temperature_pointer:.long 0
-  .global   temperature_buffer
 temperature_buffer: .long 0
                     .long 0
                     .long 0
@@ -28,10 +27,30 @@ temperature_buffer: .long 0
                     .long 0
                     .long 0
                     .long 0
+                    .long 0
+                    .long 0
+                    .long 0
+                    .long 0
+                    .long 0
+                    .long 0
+                    .long 0
+                    .long 0
+                    .long 0
+                    .long 0
 
+  .global   humidity_pointer
 humidity_pointer:   .long 0
-  .global   humidity_buffer
 humidity_buffer:    .long 0
+                    .long 0
+                    .long 0
+                    .long 0
+                    .long 0
+                    .long 0
+                    .long 0
+                    .long 0
+                    .long 0
+                    .long 0
+                    .long 0
                     .long 0
                     .long 0
                     .long 0
@@ -49,11 +68,12 @@ current_measurement:.long 0   // A lsb variable indicates the last measurement.
 temp_conv:          .long 0   // Converted temperature value from the sensor numbers
   .global   hum_conv
 hum_conv:           .long 0   // Converted humidity value from the sensor numbers
-  .global   numerator
 numerator:          .long 0   // if array of measured values is full this variable store the rest of the dividing
-  .global   converted_value
 converted_value:    .long 0   // msb + lsb
 buffer:             .long 0
+
+  .global   wake_sw
+wake_sw:            .long 0
 
 
 // ------ SECTION DATA ------
@@ -65,7 +85,6 @@ buffer:             .long 0
     .set    HUM_HOLD_COM,   0xe5
     .set    READ_REG_COM,   0xe7
     .set    WRITE_REG_COM,  0xe6
-    .set    SOFT_RESET_COM, 0xfe
 
     .set    ACK_COM,        0x01
     .set    NO_ACK_COM,     0x00
@@ -113,6 +132,12 @@ buffer:             .long 0
 entry:
     move    r3, stack_start
 
+    move    r2, wake_sw
+    move    r1, 0x00
+    st      r1, r2, 0
+    READ_RTC_REG(RTC_GPIO_IN_REG, RTC_GPIO_IN_NEXT_S + 0x11, 1)
+    jumpr   wake_push, 1, eq
+
     order_write     START_COM       ADDRESS_W_COM   ACK_COM     NO_STOP_COM
     psr
     jump    i2c_write
@@ -136,12 +161,12 @@ run_measure:
     order_read      HOLD_COM        msb_bits        ACK_COM
     psr
     jump    i2c_read
-    order_read      NO_HOLD_COM     lsb_bits        ACK_COM
+    order_read      NO_HOLD_COM     lsb_bits        NO_ACK_COM
     psr
     jump    i2c_read
-    order_read      NO_HOLD_COM     crc_bits        NO_ACK_COM
-    psr
-    jump    i2c_read
+//    order_read      NO_HOLD_COM     crc_bits        NO_ACK_COM
+//    psr
+//    jump    i2c_read
     psr
     jump    stop_con
 
@@ -163,7 +188,10 @@ end_main_loop:
 
     jump    entry
 
-
+wake_push:
+    move    r2, wake_sw
+    move    r1, 0x01
+    st      r1, r2, 0
 wake_up:
     /*INFO: There will be no wakeup if counter is lower than 20.*/
     move    r3, counter
@@ -173,7 +201,6 @@ wake_up:
     st      r0, r3, 0
     jump    entry
 run_program:
-
     wake
     WRITE_RTC_FIELD(RTC_CNTL_STATE0_REG, RTC_CNTL_ULP_CP_SLP_TIMER_EN, 0)
     halt
@@ -188,7 +215,7 @@ delay:
 del_loop:
     wait    40000
     stage_inc 1
-    jumps   del_loop, 2, lt //123
+    jumps   del_loop, 10, lt //123
     // add     r0, r0, 1
     // jumpr   rep_del, 3, lt //12
     ret
@@ -325,7 +352,7 @@ hum_measurement:
   move    r2, humidity_pointer        // INFO: increase a temperature_pointer variable by 1
   add     r0, r0, 1
   st      r0, r2, 0
-  jumpr   end_add, 10, lt
+  jumpr   end_add, 20, lt
   move    r1, humidity_buffer
   jump    after_load
 temp_measurement:
@@ -337,7 +364,7 @@ temp_measurement:
   move    r2, temperature_pointer     // increase a temperature_pointer variable by 1
   add     r0, r0, 1
   st      r0, r2, 0
-  jumpr   end_add, 10, lt
+  jumpr   end_add, 20, lt
   move    r1, temperature_buffer
 after_load:
   sub     r0, r0, 1
@@ -352,12 +379,12 @@ count_rep_3:                          // INFO: do the addition on the variables 
   st      r2, r1, 1
   add     r1, r1, 1
   stage_inc 1
-  jumps   count_rep_3, 10, lt
+  jumps   count_rep_3, 20, lt
   move    r1, 0x00
 count_rep_4:
-  sub     r0, r0, 10
+  sub     r0, r0, 20
   add     r1, r1, 1
-  jumpr   count_rep_4, 10, ge
+  jumpr   count_rep_4, 20, ge
   move    r2, converted_value
   st      r1, r2, 0
   move    r2, numerator
@@ -370,7 +397,6 @@ count_rep_4:
 end_add:
   ret
 
-
 check_values:
   move    r2, current_measurement
   ld      r1, r2, 0
@@ -382,15 +408,16 @@ check_values:
   ld      r1, r1, 0
   move    r0, numerator
   ld      r0, r0, 0
-  jumpr   step_1, 7, gt
+  jumpr   step_1, 8, gt
   jump    step_2
 step_1:
   add     r1, r1, 1
- step_2:
+step_2:
   ld      r0, r2, 0
   and     r0, r0, 0x01
   jumpr   if_hum, 0, eq
   move    r2, temp_conv
+  sub     r1, r1, 0x28        // 0x28 = 40
   jump    step_3
 if_hum:
   move    r2, hum_conv

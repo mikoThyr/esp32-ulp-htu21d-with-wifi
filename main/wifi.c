@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include <string.h>
 #include "esp_mac.h"
 #include "esp_wifi.h"
@@ -5,6 +6,7 @@
 #include "esp_err.h"
 #include <esp_system.h>
 #include "nvs_flash.h"
+#include "nvs.h"
 #include "esp_event.h"
 #include "lwip/err.h"
 #include "lwip/sys.h"
@@ -14,55 +16,6 @@
 static esp_netif_t *netif_ap = NULL;
 static esp_netif_t *netif_sta = NULL;
 
-struct {
-	char* data;
-} user[2];
-
-char* ssid_st;
-char* pass_st;
-
-uint8_t split_http_post (char* content, int length) {
-	uint8_t number_words = 0;
-	char ampersand_sign = '&';
-	char equal_sign = '=';
-	content[length] = ampersand_sign;
-
-	uint8_t current_position = 0;
-	uint8_t id = 0;
-	uint8_t position = 0;
-
-	/*	The characters in the "content" string looks like ssid=user_text&pass=user_text. The idea behind the loop is to separate the text after the "=" character until the ampersand character will be reached. The string is stored in the first structure element. Steps are repeated on the "pass".
-	 */
-	while (current_position <= length) {
-		if (content[current_position] == equal_sign) {
-			number_words++;
-			current_position++;
-			while ((content[current_position] != ampersand_sign) && (current_position <= length)) {
-				user[id].data[position] = content[current_position];
-				position++;
-				current_position++;
-			}
-
-			printf("%s\n", user[id].data);
-
-			switch (id) {
-				case 0:
-					strcpy(ssid_st, user[0].data);
-					break;
-				case 1:
-					strcpy(pass_st, user[1].data);
-					break;
-				default:
-					break;
-			}
-			position = 0;
-			id++;
-		}
-		current_position++;
-	}
-
-	return number_words;
-}
 
 void configure_nvs (void) {
 	//Initialize NVS
@@ -93,24 +46,26 @@ void wifi_ap_mode (void) {
 	ESP_ERROR_CHECK(esp_wifi_set_config(ESP_IF_WIFI_AP, &wifi_config));
 }
 
-void wifi_sta_mode (void) {
-	esp_err_t error_status;
-	//char* error_code;
-	wifi_config_t wifi_config = {
-// 		.sta = {
-// 			.ssid = ESP_WIFI_SSID_ST,
-// 			.password = ESP_WIFI_PASS_ST
-// 		},
-	};
+void wifi_sta_mode ( void ) {
+  esp_err_t err;
+  wifi_config_t wifi_config = {
+ 	  //.sta = {
+ 			//.ssid = ssid,
+ 			//.password = pass,
+ 		//},
+  };
 
-	strcpy((char* )wifi_config.sta.ssid, "SiecImperialna1");//ssid_st);
-	strcpy((char* )wifi_config.sta.password, "1mPer1UMm");//pass_st);
+    //memcpy(ssid_u, ssid, sizeof(ssid));
+    //memcpy(pass_u, pass, sizeof(pass));
 
-	ESP_ERROR_CHECK( esp_wifi_set_mode(WIFI_MODE_STA) );
+  strcpy((char* )wifi_config.sta.ssid, "SiecImperialna1");
+  strcpy((char* )wifi_config.sta.password, "1mPer1UMm");
+
+  ESP_ERROR_CHECK( esp_wifi_set_mode(WIFI_MODE_STA) );
 	ESP_ERROR_CHECK( esp_wifi_set_config(ESP_IF_WIFI_STA, &wifi_config) );
-	error_status = esp_wifi_connect();
-	printf("wifi_sta_mode(): %s\n", esp_err_to_name(error_status));
-}
+	err = esp_wifi_connect();
+	printf("wifi_sta_mode(): %s\n", esp_err_to_name(err));
+  }
 
 static void event_handler (void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data) {
 	if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
@@ -141,7 +96,7 @@ void configure_wifi (void) {
 
 esp_err_t start_wifi (wifi_mode_t set_mode) {
 	esp_err_t error_status;
-	wifi_mode_t current_mode;
+
 	error_status = esp_wifi_get_mode(&current_mode);
 
 	if (error_status == ESP_OK) {
@@ -179,7 +134,7 @@ esp_err_t start_wifi (wifi_mode_t set_mode) {
 					wifi_sta_mode();
 				} else if (set_mode & WIFI_MODE_AP) {
 					printf("6\n");
-					//error_status = esp_wifi_start();
+					error_status = esp_wifi_start();
 					wifi_ap_mode();
 				} else {
 					printf("7\n");

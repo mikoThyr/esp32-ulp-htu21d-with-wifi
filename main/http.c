@@ -9,15 +9,20 @@
 #include "nvs_flash.h"
 #include "esp_netif.h"
 #include "esp_tls_crypto.h"
+#include "nvs.h"
 
 #include "http.h"
 #include "wifi.h"
 
 static const char *TAG = "HTTP";
 
+typedef struct {
+	char ssid[32];
+  char pass[32];
+} user_data_t;
+
 esp_err_t get_handler (httpd_req_t *req) {
-	const char resp[] =
-		"<html>"
+		 httpd_resp_send(req, "<html>"
 		"<head>"
 			"<title>ESP32</title>"
 			"<style type=\"text/css\">"
@@ -26,39 +31,28 @@ esp_err_t get_handler (httpd_req_t *req) {
 		"</head>"
 		"<body>"
 			"<div class=\"outer\"><br><br>"
-			"<form action=\"/url\" method=\"POST\">"
+			"<form action=\"/url\" method=\"post\">"
 				"<h3>Complete the fields below with the network ssid and password</h3><br><br>"
 				"<label for=\"fname\">SSID:</label><br>"
 				"<input type=\"text\" id=\"ssid\" name=\"ssid\"><br><br>"
 				"<label for=\"lname\">Password:</label><br>"
-				"<input type=\"text\" id=\"pass\" name=\"pass\"><br>"
+				"<input type=\"password\" id=\"pass\" name=\"pass\"><br>"
 				"<input type=\"submit\" value=\"Save\">"
 			"</form>"
 			"</div>"
 		"</body>"
-		"</html>";
+		"</html>", -1);
 
-	ESP_ERROR_CHECK(httpd_resp_send(req, resp, HTTPD_RESP_USE_STRLEN));
-	return ESP_OK;
+	  return ESP_OK;
 }
 
 esp_err_t post_handler (httpd_req_t *req) {
-	char content[52];
-	/* Truncate if content length larger than the buffer */
-	size_t recv_size = MIN(req->content_len, sizeof(content));
-	int ret = httpd_req_recv(req, content, recv_size);
+    user_data_t user_data = {0};
 
-	split_http_post(content, ret);
+    httpd_req_recv(req, user_data.ssid, sizeof(user_data.ssid));
+    httpd_req_recv(req, user_data.pass, sizeof(user_data.pass));
 
-	if (ret <= 0) {
-		if (ret == HTTPD_SOCK_ERR_TIMEOUT) {
-			httpd_resp_send_408(req);
-		}
-		return ESP_FAIL;
-	}
-
-	const char resp[] =
-		"<html>"
+    httpd_resp_send(req, "<html>"
 		"<head>"
 			"<title>ESP32</title>"
 			"<style type=\"text/css\">"
@@ -68,40 +62,62 @@ esp_err_t post_handler (httpd_req_t *req) {
 		"<body>"
 			"<h3>OK.</h3>"
 		"</body>"
-		"</html>";
+		"</html>", -1);
 
-	httpd_resp_send(req, resp, HTTPD_RESP_USE_STRLEN);
-	return ESP_OK;
+    /* Zapisanie wartości pól do pamięci NVM */
+    nvs_handle_t nvs_handle;
+    esp_err_t err = nvs_open("storage", NVS_READWRITE, &nvs_handle);
+    if (err != ESP_OK) {
+        return err;
+    }
+    err = nvs_set_str(nvs_handle, "ssid", user_data.ssid);
+    if (err != ESP_OK) {
+        nvs_close(nvs_handle);
+        return err;
+    }
+    err = nvs_set_str(nvs_handle, "pass", user_data.pass);
+    if (err != ESP_OK) {
+        nvs_close(nvs_handle);
+        return err;
+    }
+    err = nvs_commit(nvs_handle);
+    if (err != ESP_OK) {
+        nvs_close(nvs_handle);
+        return err;
+    }
+    nvs_close(nvs_handle);
+
+	  return ESP_OK;
 }
 
 httpd_uri_t uri_get = {
-	.uri = "/uri",
-	.method = HTTP_GET,
-	.handler = get_handler,
-	.user_ctx = NULL
+	  .uri = "/uri",
+	  .method = HTTP_GET,
+	  .handler = get_handler,
+	  .user_ctx = NULL
 };
 
 httpd_uri_t uri_post = {
-	.uri       = "/url",
-	.method    = HTTP_POST,
-	.handler   = post_handler,
-	.user_ctx  = NULL
+	  .uri       = "/url",
+	  .method    = HTTP_POST,
+	  .handler   = post_handler,
+	  .user_ctx  = NULL
 };
 
 httpd_handle_t start_webserver (void) {
-	httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-	httpd_handle_t server = NULL;
-	if (httpd_start(&server, &config) == ESP_OK) {
-		httpd_register_uri_handler(server, &uri_get);
-		httpd_register_uri_handler(server, &uri_post);
-	}
-	return server;
+	  httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+	  httpd_handle_t server = NULL;
+	  if (httpd_start(&server, &config) == ESP_OK) {
+		    httpd_register_uri_handler(server, &uri_get);
+		    httpd_register_uri_handler(server, &uri_post);
+	  }
+	  return server;
 }
 
 void stop_webserver (httpd_handle_t server) {
-	if (server) {
-		httpd_stop(server);
-	}
+	  if (server) {
+		    httpd_stop(server);
+	  }
 }
 
 void start_http_client ( uint8_t temperature, uint8_t humidity ) {
@@ -133,6 +149,5 @@ void start_http_client ( uint8_t temperature, uint8_t humidity ) {
     }
     esp_http_client_cleanup(client);
     esp_http_client_close(client);
-
 }
 

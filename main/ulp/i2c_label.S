@@ -25,8 +25,8 @@ temp_data:  .long 0
 msb_bits:   .long 0
   .global   lsb_bits
 lsb_bits:   .long 0
-  .global   crc_bits
-crc_bits:   .long 0
+//  .global   crc_bits
+//crc_bits:   .long 0
   .global   start
 start:      .long 0
   .global   command
@@ -38,8 +38,6 @@ stop:       .long 0
   .global   hold_mode
 hold_mode:  .long 0
 
-  .set      pin_sda, 0x06
-  .set      pin_scl, 0x07
 
 
 // ------ SECTION TEXT ------
@@ -50,23 +48,23 @@ hold_mode:  .long 0
   .global   stop_con
 
   .macro read_SDA
-    READ_RTC_REG(RTC_GPIO_IN_REG, RTC_GPIO_IN_NEXT_S + pin_sda, 1)
+    READ_RTC_REG(RTC_GPIO_IN_REG, RTC_GPIO_IN_NEXT_S + 0x06, 1)
   .endm
 
   .macro  set_SDA
-    WRITE_RTC_REG(RTC_GPIO_OUT_W1TS_REG, RTC_GPIO_OUT_DATA_W1TS_S + pin_sda, 1, 1)
+    WRITE_RTC_REG(RTC_GPIO_OUT_W1TS_REG, RTC_GPIO_OUT_DATA_W1TS_S + 0x06, 1, 1)
   .endm
 
   .macro  set_SCL
-    WRITE_RTC_REG(RTC_GPIO_OUT_W1TS_REG, RTC_GPIO_OUT_DATA_W1TS_S + pin_scl, 1, 1)
+    WRITE_RTC_REG(RTC_GPIO_OUT_W1TS_REG, RTC_GPIO_OUT_DATA_W1TS_S + 0x07, 1, 1)
   .endm
 
   .macro  clr_SDA
-    WRITE_RTC_REG(RTC_GPIO_OUT_W1TC_REG, RTC_GPIO_OUT_DATA_W1TC_S + pin_sda, 1, 1)
+    WRITE_RTC_REG(RTC_GPIO_OUT_W1TC_REG, RTC_GPIO_OUT_DATA_W1TC_S + 0x06, 1, 1)
   .endm
 
   .macro  clr_SCL
-    WRITE_RTC_REG(RTC_GPIO_OUT_W1TC_REG, RTC_GPIO_OUT_DATA_W1TC_S + pin_scl, 1, 1)
+    WRITE_RTC_REG(RTC_GPIO_OUT_W1TC_REG, RTC_GPIO_OUT_DATA_W1TC_S + 0x07, 1, 1)
   .endm
 
 
@@ -78,7 +76,7 @@ i2c_read:
   jumpr   write_buffer, 0, eq
 check_hold_line:
   set_SCL
-  READ_RTC_REG(RTC_GPIO_IN_REG, RTC_GPIO_IN_NEXT_S + pin_scl, 1)
+  READ_RTC_REG(RTC_GPIO_IN_REG, RTC_GPIO_IN_NEXT_S + 0x07, 1)
   jumpr   after_hold, 1, eq
   jump    check_hold_line
 
@@ -87,7 +85,7 @@ write_buffer:
   set_SCL
   lsh     r1, r1, 1
 after_hold:
-  READ_RTC_REG(RTC_GPIO_IN_REG, RTC_GPIO_IN_NEXT_S + pin_sda, 1)
+  READ_RTC_REG(RTC_GPIO_IN_REG, RTC_GPIO_IN_NEXT_S + 0x06, 1)
   or      r1, r1, r0
   stage_inc 1
   clr_SCL
@@ -174,7 +172,7 @@ end_condition:
 ack_bit:
   set_SDA
   set_SCL
-  READ_RTC_REG(RTC_GPIO_IN_REG, RTC_GPIO_IN_NEXT_S + pin_sda, 1)
+  READ_RTC_REG(RTC_GPIO_IN_REG, RTC_GPIO_IN_NEXT_S + 0x06, 1)
   wait    5
   clr_SCL
   clr_SDA

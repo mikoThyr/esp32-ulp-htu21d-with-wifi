@@ -10,7 +10,6 @@
 #define ESP_WIFI_SSID_ST	CONFIG_ESP_WIFI_SSID_ST
 #define ESP_WIFI_PASS_ST	CONFIG_ESP_WIFI_PASSWORD_ST
 
-uint8_t split_http_post (char* content, int length); 
 void configure_nvs(void);
 void configure_wifi(void);
 esp_err_t start_wifi (wifi_mode_t set_mode);
