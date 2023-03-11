@@ -80,21 +80,6 @@ void app_main(void) {
   gpio_config(&io_conf);
   configure_nvs();
 
-  wifi_mode_t current_mode;
-  nvs_handle_t nvs_handle;
-  char ssid[32];
-  size_t ssid_len = sizeof(ssid);
-  char pass[32];
-  size_t pass_len = sizeof(pass);
-
-  error_status = nvs_open("storage", NVS_READONLY, &nvs_handle);
-
-  error_status = nvs_get_str(nvs_handle, "ssid", ssid, &ssid_len);
-
-  error_status = nvs_get_str(nvs_handle, "pass", pass, &pass_len);
-
-  nvs_close(nvs_handle);
-
   switch ( ulp_wake_sw & UINT16_MAX ) {
   //INFO: WEBSERVER
   case 1:
@@ -198,6 +183,5 @@ void htu21d_set_register (void ) {
 	i2c_master_stop(link);
 	i2c_master_cmd_begin(I2C_NUM_0, link, 1000 / portTICK_PERIOD_MS);
 	i2c_cmd_link_delete(link);
-  printf("rem_register_data: %d\nRESOLUTION: %d\nrem_register_data & 0x81: %d\n", rem_register_data, RESOLUTION, rem_register_data & 0x81);
 }
 

@@ -13,12 +13,34 @@
 
 #include "wifi.h"
 
+typedef struct {
+  char ssid[32];
+  char pass[32];
+} user_data_t;
+
 static esp_netif_t *netif_ap = NULL;
 static esp_netif_t *netif_sta = NULL;
 
+user_data_t read_nvm_data ( void ) {
+  nvs_handle_t nvs_handle;
+  user_data_t value = {0};
+  esp_err_t err;
+
+  size_t ssid_len = sizeof(value.ssid);
+  size_t pass_len = sizeof(value.pass);
+
+  err = nvs_open("storage", NVS_READONLY, &nvs_handle);
+  ESP_ERROR_CHECK(err);
+  err = nvs_get_str(nvs_handle, "ssid", value.ssid, &ssid_len);
+  ESP_ERROR_CHECK(err);
+  err = nvs_get_str(nvs_handle, "pass", value.pass, &pass_len);
+  ESP_ERROR_CHECK(err);
+  nvs_close(nvs_handle);
+
+  return value;
+}
 
 void configure_nvs (void) {
-	//Initialize NVS
 	esp_err_t ret = nvs_flash_init();
 	if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
 		ESP_ERROR_CHECK(nvs_flash_erase());
@@ -48,6 +70,8 @@ void wifi_ap_mode (void) {
 
 void wifi_sta_mode ( void ) {
   esp_err_t err;
+  user_data_t value = read_nvm_data ();
+
   wifi_config_t wifi_config = {
  	  //.sta = {
  			//.ssid = ssid,
@@ -55,23 +79,19 @@ void wifi_sta_mode ( void ) {
  		//},
   };
 
-    //memcpy(ssid_u, ssid, sizeof(ssid));
-    //memcpy(pass_u, pass, sizeof(pass));
-
-  strcpy((char* )wifi_config.sta.ssid, "SiecImperialna1");
-  strcpy((char* )wifi_config.sta.password, "1mPer1UMm");
+  strcpy((char* )wifi_config.sta.ssid, value.ssid);
+  strcpy((char* )wifi_config.sta.password, value.pass);
 
   ESP_ERROR_CHECK( esp_wifi_set_mode(WIFI_MODE_STA) );
 	ESP_ERROR_CHECK( esp_wifi_set_config(ESP_IF_WIFI_STA, &wifi_config) );
 	err = esp_wifi_connect();
 	printf("wifi_sta_mode(): %s\n", esp_err_to_name(err));
-  }
+}
 
 static void event_handler (void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data) {
 	if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
 		esp_wifi_connect();
 		printf("Retry to connect to the AP\n");
-		vTaskDelay(5000 / portTICK_PERIOD_MS);
 	}
 }
 
@@ -87,8 +107,8 @@ void configure_wifi (void) {
 	wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
 	ESP_ERROR_CHECK(esp_wifi_init(&cfg));
 
-	ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_RAM) );
-	ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_NULL) );
+	ESP_ERROR_CHECK( esp_wifi_set_storage(WIFI_STORAGE_RAM) );
+	ESP_ERROR_CHECK( esp_wifi_set_mode(WIFI_MODE_NULL) );
 
 	esp_event_handler_instance_t instance_id;
 	ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &event_handler, NULL, &instance_id));
@@ -96,53 +116,47 @@ void configure_wifi (void) {
 
 esp_err_t start_wifi (wifi_mode_t set_mode) {
 	esp_err_t error_status;
+  wifi_mode_t current_mode;
 
 	error_status = esp_wifi_get_mode(&current_mode);
 
 	if (error_status == ESP_OK) {
 		switch(current_mode) {
-			case WIFI_MODE_STA:
-				if (set_mode & WIFI_MODE_STA) {					//WIFI_MODE_STA
-					printf("1\n");
-					//error_status = esp_wifi_start();
-				} else {										//WIFI_MODE_AP
-					printf("2\n");
-					//ESP_ERROR_CHECK(esp_wifi_stop());
-					//vTaskDelay(10 / portTICK_PERIOD_MS);
-					//error_status = esp_wifi_start();
-					esp_wifi_disconnect();
-					vTaskDelay(100 / portTICK_PERIOD_MS);
-					wifi_ap_mode();
-				}
-				break;
-			case WIFI_MODE_AP:
-				if (set_mode & WIFI_MODE_AP) {
-					printf("3\n");
-					//error_status = esp_wifi_start();
-				} else {
-					printf("4\n");
-					//ESP_ERROR_CHECK(esp_wifi_stop());
-					//vTaskDelay(10 / portTICK_PERIOD_MS);
-					//error_status = esp_wifi_start();
-					wifi_ap_mode();
-				}
-				break;
-			case WIFI_MODE_NULL:
-				if (set_mode & WIFI_MODE_STA) {
-					printf("5\n");
-					error_status = esp_wifi_start();
-					wifi_sta_mode();
-				} else if (set_mode & WIFI_MODE_AP) {
-					printf("6\n");
-					error_status = esp_wifi_start();
-					wifi_ap_mode();
-				} else {
-					printf("7\n");
-					error_status = ESP_FAIL;
-				}
-				break;
-			default:
-				break;
+		case WIFI_MODE_STA:
+			if (set_mode & WIFI_MODE_STA) {
+				//error_status = esp_wifi_start();
+			} else {
+				//ESP_ERROR_CHECK(esp_wifi_stop());
+				//vTaskDelay(10 / portTICK_PERIOD_MS);
+				//error_status = esp_wifi_start();
+				esp_wifi_disconnect();
+				vTaskDelay(100 / portTICK_PERIOD_MS);
+				wifi_ap_mode();
+			}
+			break;
+		case WIFI_MODE_AP:
+			if (set_mode & WIFI_MODE_AP) {
+				//error_status = esp_wifi_start();
+			} else {
+				//ESP_ERROR_CHECK(esp_wifi_stop());
+				//vTaskDelay(10 / portTICK_PERIOD_MS);
+				//error_status = esp_wifi_start();
+				wifi_ap_mode();
+			}
+			break;
+		case WIFI_MODE_NULL:
+			if (set_mode & WIFI_MODE_STA) {
+				error_status = esp_wifi_start();
+				wifi_sta_mode();
+			} else if (set_mode & WIFI_MODE_AP) {
+				error_status = esp_wifi_start();
+				wifi_ap_mode();
+			} else {
+				error_status = ESP_FAIL;
+			}
+			break;
+		default:
+			break;
 		}
 	}
 	return error_status;
