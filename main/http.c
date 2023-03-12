@@ -22,7 +22,7 @@ typedef struct {
 } user_data_t;
 
 esp_err_t get_handler (httpd_req_t *req) {
-		 httpd_resp_send(req, "<html>"
+	httpd_resp_send(req, "<html>"
 		"<head>"
 			"<title>ESP32</title>"
 			"<style type=\"text/css\">"
@@ -43,7 +43,7 @@ esp_err_t get_handler (httpd_req_t *req) {
 		"</body>"
 		"</html>", -1);
 
-	  return ESP_OK;
+	return ESP_OK;
 }
 
 esp_err_t post_handler (httpd_req_t *req) {
@@ -56,7 +56,6 @@ esp_err_t post_handler (httpd_req_t *req) {
 
   httpd_req_recv(req, data, sizeof(data));
   data[strlen(data)] = '\0';
-  printf("data: [%d] %s\n", strlen(data), data);
   token = strtok_r(data, "&", &saveptr);
   while (token != NULL) {
     if (strstr(token, "ssid=") == token) {
@@ -103,8 +102,6 @@ esp_err_t post_handler (httpd_req_t *req) {
     return err;
   }
   nvs_close(nvs_handle);
-  printf("ssid: %s | %d\n", user_data.ssid, user_data.ssid[req->content_len]);
-  printf("pass: %s | %d\n", user_data.pass, user_data.pass[req->content_len]);
 
 	return ESP_OK;
 }

@@ -1,7 +1,6 @@
 #include <stdint.h>
 #include <stdio.h>
 #include "esp_err.h"
-
 #include "esp32/ulp.h"
 #include "esp_http_client.h"
 #include "esp_wifi.h"
@@ -20,9 +19,6 @@
 
 #include "wifi.h"
 #include "http.h"
-
-#include "nvs.h"
-#include "nvs_flash.h"
 
 #define LED_PIN			  GPIO_NUM_14
 #define GPIO_SDA		  GPIO_NUM_25
@@ -67,21 +63,33 @@ gpio_config_t io_conf = {
 
 extern const uint8_t ulp_main_bin_start[] asm("_binary_ulp_main_bin_start");
 extern const uint8_t ulp_main_bin_end[]   asm("_binary_ulp_main_bin_end");
-
+/**
+ * @brief The function to initialize pins: switch.
+ */
+void gpio_initialization ( void );
+/**
+ * @brief The function to initialize pins: I2C (SDA, SCL).
+ */
 void rtc_initialization ( void );
+/**
+ * @brief The function to set resolution of the sensor.
+ * The first step of the function is to check two bits fetched from a sensor register.
+ * If that bits are the same as set by us the function just end without changing the register.
+ */
 void htu21d_set_register ( void );
+/**
+ * @brief The function used to reset a sesnor.
+ */
 void htu21d_reset ( void );
 
-//INFO: SUPERLOOP
-void app_main(void) {
+void app_main ( void ) {
   esp_err_t error_status;
-  i2c_param_config(I2C_NUM_0, &GPIO_I2C_Init);
-	i2c_driver_install(I2C_NUM_0, I2C_MODE_MASTER, 0, 0, 0);
-  gpio_config(&io_conf);
+
+  gpio_initialization();
+  rtc_initialization();
   configure_nvs();
 
   switch ( ulp_wake_sw & UINT16_MAX ) {
-  //INFO: WEBSERVER
   case 1:
 	  httpd_handle_t server_handle;
     printf("Wake up by pressed button.\n");
@@ -92,7 +100,7 @@ void app_main(void) {
 			gpio_set_level(LED_PIN, 1);
 
 	    server_handle = start_webserver();
-			vTaskDelay(90000 / portTICK_PERIOD_MS);		//Wait x sec and turn off wifi and led
+			vTaskDelay(60000 / portTICK_PERIOD_MS);		//Wait x sec and turn off wifi and led
 			stop_webserver(server_handle);
 
 			gpio_set_level(LED_PIN, 0);
@@ -101,7 +109,6 @@ void app_main(void) {
     esp_wifi_stop();
     break;
   default:
-    //INFO: Send data by the HTTP
     esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
     if (cause != ESP_SLEEP_WAKEUP_ULP) {
       ulp_load_binary(0, ulp_main_bin_start, (ulp_main_bin_end - ulp_main_bin_start) / sizeof(uint32_t));
@@ -129,7 +136,6 @@ void app_main(void) {
     }
     break;
   }
-  rtc_initialization();
   ulp_run(&ulp_entry - RTC_SLOW_MEM);
   esp_sleep_enable_ulp_wakeup();
   esp_deep_sleep_start();
@@ -150,6 +156,12 @@ void rtc_initialization ( void ) {
   rtc_gpio_set_direction(GPIO_NUM_27, RTC_GPIO_MODE_INPUT_ONLY);
 }
 
+void gpio_initialization ( void ) {
+  i2c_param_config(I2C_NUM_0, &GPIO_I2C_Init);
+	i2c_driver_install(I2C_NUM_0, I2C_MODE_MASTER, 0, 0, 0);
+  gpio_config(&io_conf);
+}
+
 void htu21d_reset ( void ) {
 	i2c_cmd_handle_t link = i2c_cmd_link_create();
 	i2c_master_start(link);
@@ -163,7 +175,6 @@ void htu21d_reset ( void ) {
 
 void htu21d_set_register (void ) {
 	uint8_t register_data;
-  uint8_t rem_register_data;
 	i2c_cmd_handle_t link = i2c_cmd_link_create();
 	i2c_master_start(link);
 	i2c_master_write_byte(link, I2C_ADR | I2C_MASTER_WRITE, ACK);
@@ -171,7 +182,6 @@ void htu21d_set_register (void ) {
 	i2c_master_start(link);
 	i2c_master_write_byte(link, I2C_ADR | I2C_MASTER_READ, ACK);
 	i2c_master_read_byte(link, &(register_data), NO_ACK);
-  rem_register_data = register_data;
 	if ((register_data & 0x81) != RESOLUTION) {
 		register_data = register_data & 0x7E;
 		register_data = register_data | RESOLUTION;

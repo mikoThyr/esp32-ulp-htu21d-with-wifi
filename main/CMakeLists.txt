@@ -2,7 +2,7 @@ idf_component_register(	SRCS    "main.c"
                                 "wifi.c"
                                 "http.c"
 						SRC_DIRS "ulp"
-						INCLUDE_DIRS ".")
+						INCLUDE_DIRS "../include")
 
 set(ulp_app_name ulp_${COMPONENT_NAME})
 set(ulp_s_sources 	"ulp/ulp_main_file.S"
